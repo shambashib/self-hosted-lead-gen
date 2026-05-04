@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LeadGen Engine</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div class="logo">⚡ LeadGen Engine</div>
+      <span class="badge">Self-Hosted</span>
+    </header>
+
+    <main>
+      <!-- Prompt input -->
+      <section class="prompt-section card">
+        <h2>Generate Leads</h2>
+        <p class="hint">Describe the leads you need in plain English.</p>
+        <div class="examples">
+          <span class="ex-label">Examples:</span>
+          <button class="chip" onclick="setPrompt('Find D2C skincare brands in Mumbai')">D2C skincare · Mumbai</button>
+          <button class="chip" onclick="setPrompt('Find SaaS founders in India')">SaaS founders · India</button>
+          <button class="chip" onclick="setPrompt('Find real estate agents in Kolkata')">Real estate · Kolkata</button>
+          <button class="chip" onclick="setPrompt('Find IT consulting companies in Bangalore')">IT consulting · Bangalore</button>
+        </div>
+        <div class="input-row">
+          <input id="prompt" type="text" placeholder="e.g. Find D2C skincare brands in Mumbai" />
+          <button id="generate-btn" onclick="generate()">Generate</button>
+        </div>
+        <div class="options-row">
+          <label>Min score:
+            <input id="min-score" type="number" value="20" min="0" max="100" style="width:60px" />
+          </label>
+        </div>
+      </section>
+
+      <!-- Status bar -->
+      <div id="status-bar" class="status-bar hidden"></div>
+
+      <!-- Stats -->
+      <div id="stats-panel" class="stats-panel hidden">
+        <div class="stat-box"><span id="stat-found">0</span><small>Leads Found</small></div>
+        <div class="stat-box"><span id="stat-crawled">0</span><small>Pages Crawled</small></div>
+        <div class="stat-box"><span id="stat-queries">0</span><small>Queries</small></div>
+        <div class="stat-box"><span id="stat-duration">—</span><small>Duration</small></div>
+      </div>
+
+      <!-- Leads table -->
+      <section id="results-section" class="card hidden">
+        <div class="table-header">
+          <h3>Results <span id="result-count" class="count-badge">0</span></h3>
+          <button id="export-btn" class="export-btn" onclick="exportCSV()">⬇ Export CSV</button>
+        </div>
+        <div class="table-wrap">
+          <table id="leads-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Business Name</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th>City</th>
+                <th>Website</th>
+                <th>Industry</th>
+                <th>Source</th>
+                <th>Score</th>
+              </tr>
+            </thead>
+            <tbody id="leads-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Job history -->
+      <section id="history-section" class="card">
+        <h3>Job History</h3>
+        <div id="job-list" class="job-list">Loading...</div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

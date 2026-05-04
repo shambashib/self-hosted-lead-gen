@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pytest tests/test_prompt_parser.py tests/test_query_generator.py tests/test_extractors.py -v)",
+      "Bash(python -m pytest tests/ -v --tb=short)"
+    ]
+  }
+}

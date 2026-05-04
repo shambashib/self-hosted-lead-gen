@@ -1,0 +1,169 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0f1117;
+  --surface: #1a1d27;
+  --surface2: #22263a;
+  --border: #2e3250;
+  --accent: #5b6af0;
+  --accent-hover: #7080ff;
+  --text: #e8eaf6;
+  --text-muted: #8b90b8;
+  --green: #34d399;
+  --yellow: #fbbf24;
+  --red: #f87171;
+  --radius: 10px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+.app { max-width: 1200px; margin: 0 auto; padding: 20px 16px 60px; }
+
+/* ── Header ── */
+.header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 16px 0 24px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 24px;
+}
+.logo { font-size: 20px; font-weight: 700; letter-spacing: -0.5px; }
+.badge {
+  background: var(--surface2); border: 1px solid var(--border);
+  color: var(--text-muted); font-size: 11px; padding: 2px 8px; border-radius: 20px;
+}
+
+/* ── Card ── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  margin-bottom: 20px;
+}
+.card h2 { font-size: 17px; margin-bottom: 6px; }
+.card h3 { font-size: 15px; margin-bottom: 12px; }
+
+/* ── Prompt section ── */
+.hint { color: var(--text-muted); margin-bottom: 14px; font-size: 13px; }
+
+.examples { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px; }
+.ex-label { color: var(--text-muted); font-size: 12px; }
+.chip {
+  background: var(--surface2); border: 1px solid var(--border);
+  color: var(--text-muted); padding: 4px 12px; border-radius: 20px;
+  font-size: 12px; cursor: pointer; transition: all 0.15s;
+}
+.chip:hover { border-color: var(--accent); color: var(--text); }
+
+.input-row { display: flex; gap: 10px; }
+.input-row input {
+  flex: 1; background: var(--surface2); border: 1px solid var(--border);
+  color: var(--text); padding: 10px 14px; border-radius: var(--radius);
+  font-size: 14px; outline: none; transition: border-color 0.15s;
+}
+.input-row input:focus { border-color: var(--accent); }
+
+button#generate-btn, .export-btn {
+  background: var(--accent); color: #fff; border: none;
+  padding: 10px 22px; border-radius: var(--radius);
+  font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.15s;
+  white-space: nowrap;
+}
+button#generate-btn:hover, .export-btn:hover { background: var(--accent-hover); }
+button#generate-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.options-row { margin-top: 10px; color: var(--text-muted); font-size: 13px; }
+.options-row input {
+  background: var(--surface2); border: 1px solid var(--border);
+  color: var(--text); padding: 4px 8px; border-radius: 6px; margin-left: 6px;
+}
+
+/* ── Status bar ── */
+.status-bar {
+  padding: 12px 18px; border-radius: var(--radius);
+  font-size: 13px; margin-bottom: 16px; display: flex; align-items: center; gap: 10px;
+}
+.status-bar.running { background: rgba(91,106,240,0.15); border: 1px solid var(--accent); color: #a5b0ff; }
+.status-bar.completed { background: rgba(52,211,153,0.1); border: 1px solid var(--green); color: var(--green); }
+.status-bar.failed { background: rgba(248,113,113,0.1); border: 1px solid var(--red); color: var(--red); }
+.spinner {
+  width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.2);
+  border-top-color: var(--accent); border-radius: 50%;
+  animation: spin 0.7s linear infinite; flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Stats ── */
+.stats-panel { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+.stat-box {
+  flex: 1; min-width: 110px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px 20px; text-align: center;
+}
+.stat-box span { display: block; font-size: 26px; font-weight: 700; color: var(--accent); }
+.stat-box small { color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+/* ── Table ── */
+.table-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.count-badge {
+  background: var(--accent); color: #fff;
+  font-size: 11px; padding: 1px 8px; border-radius: 20px; margin-left: 8px;
+}
+.export-btn { padding: 7px 16px; font-size: 13px; }
+
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th {
+  text-align: left; padding: 10px 12px;
+  background: var(--surface2); color: var(--text-muted);
+  font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px;
+  border-bottom: 1px solid var(--border);
+}
+td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tbody tr:hover { background: var(--surface2); }
+
+.score-pill {
+  display: inline-block; padding: 2px 8px; border-radius: 20px; font-weight: 600; font-size: 11px;
+}
+.score-high { background: rgba(52,211,153,0.15); color: var(--green); }
+.score-mid  { background: rgba(251,191,36,0.15); color: var(--yellow); }
+.score-low  { background: rgba(248,113,113,0.15); color: var(--red); }
+
+.source-tag {
+  display: inline-block; padding: 1px 7px; border-radius: 4px;
+  background: var(--surface2); border: 1px solid var(--border);
+  color: var(--text-muted); font-size: 11px;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ── Job history ── */
+.job-list { display: flex; flex-direction: column; gap: 8px; }
+.job-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 14px; background: var(--surface2);
+  border: 1px solid var(--border); border-radius: 8px;
+  cursor: pointer; transition: border-color 0.15s;
+}
+.job-item:hover { border-color: var(--accent); }
+.job-status-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.dot-completed { background: var(--green); }
+.dot-running   { background: var(--accent); animation: pulse 1.2s infinite; }
+.dot-pending   { background: var(--yellow); }
+.dot-failed    { background: var(--red); }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+.job-prompt { flex: 1; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.job-meta { color: var(--text-muted); font-size: 11px; white-space: nowrap; }
+
+/* ── Utilities ── */
+.hidden { display: none !important; }
