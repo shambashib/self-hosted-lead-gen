@@ -11,4 +11,48 @@ Api options available
 
 1. Get leads - Get leads based on your criteria
 2. Enrichment - Enrich your existing leads with additional information
-3. 
+3
+
+
+
+
+
+
+Kaaj dorkar ache
+Already Built & Wired
+
+Brave Search API — primary SERP source, falls back to Google HTML scraping if no key is set
+IndiaMART crawler — searches directory listings, two fallback URLs
+JustDial crawler — static fetch + Playwright fallback with --disable-http2 for JS rendering
+LinkedIn scraper — site:linkedin.com/company discovery via SERP, stealth Playwright with random delays, 5-per-job cap
+Website crawler — visits company homepages + /contact and /about pages
+Contact enricher — visits individual listing pages for real tel: phone links, crawls company websites for emails (just wired into pipeline this session)
+Relevance filter — positive keyword matching per industry + hard negatives (drops "Royal Enfield" from a skincare search, etc.)
+Lead scorer — 0–100 rubric with directory source bonus, business email bonus
+Deduplicator — fuzzy match on name + phone
+Normalizer — cleans phone formats, trims whitespace, fixes casing
+Proxy manager + UA rotator — round-robin/random proxy rotation with stealth headers
+Rate limiter — token bucket per domain
+In-memory storage — default, works out of the box
+MongoDB storage — async via Motor, ready to use
+CSV export — streams leads_<job_id>.csv via API
+Async job system — fire-and-forget background task, poll /api/jobs/{job_id} for status
+Sync endpoint — /api/leads/generate/sync for demos and testing
+Docker + docker-compose — API + MongoDB + Redis in one command
+Frontend UI — served at /, static HTML/JS
+32 passing tests
+README with full setup instructions
+
+
+Not Yet Integrated / Needs Work
+
+SQLite storage — listed as an option in config (STORAGE_BACKEND=sqlite) but the database.py implementation likely only has in-memory and MongoDB backends; SQLite adapter not written
+Redis queue backend — config supports QUEUE_BACKEND=redis but the actual Redis-backed task queue isn't implemented; everything currently runs on the in-memory asyncio queue
+LLM-enhanced prompt parsing — LLM_PROVIDER=openai/anthropic is in config but prompt_parser.py likely does regex/keyword extraction only; the LLM path isn't wired
+YellowPages crawler — SourceType.yellowpages exists in the model and scorer gives it a +10 bonus, but there's no actual YellowPagesCrawler — only the classifier recognises the domain
+Contact enricher hasn't been live-tested — the code was written and wired this session but not validated end-to-end against real JustDial listing pages; phone/email extraction success rate is unknown
+Authentication — the API has no auth layer; anyone with the URL can trigger jobs and read all leads
+Webhook / job completion callback — no way to get notified when a job finishes without polling
+Email/phone validation libraries — phonenumbers and email-validator are in requirements.txt but the normalizer doesn't use them for proper E.164 formatting or MX record validation
+Frontend quality — the UI exists but hasn't been tested for edge cases (empty results, long-running jobs, error states)
+Result caching — identical prompts re-run the full pipeline every time; no cache layer to skip redundant crawls
