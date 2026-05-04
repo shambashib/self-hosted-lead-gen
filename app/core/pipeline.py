@@ -3,16 +3,20 @@ Lead Generation Pipeline Orchestrator.
 
 Flow:
   Prompt
-    → parse_prompt()         [PromptParser]
-    → generate_queries()     [QueryGenerator]
-    → SERP scrape            [GoogleSERPScraper]
-    → classify URLs          [SourceClassifier]
-    → parallel crawl         [IndiaMARTCrawler | JustDialCrawler | WebsiteCrawler]
-    → normalise()            [Normalizer]
-    → deduplicate()          [Deduplicator]
-    → score()                [Scorer]
+    → parse_prompt()          [PromptParser]
+    → generate_queries()      [QueryGenerator]
+    → SERP scrape             [BraveSearchScraper (API) | GoogleSERPScraper (HTML fallback)]
+    → classify URLs           [SourceClassifier]
+    → parallel crawl          [IndiaMARTCrawler | JustDialCrawler | WebsiteCrawler]
+    → LinkedIn company pages  [LinkedInScraper] (rate-limited, capped)
+    → contact enrichment      [ContactEnricher] (phone from tel: links, email from company site)
+    → set industry field      (from parsed prompt, not from query string)
+    → normalise()             [Normalizer]
+    → relevance filter        [RelevanceFilter]  ← removes irrelevant results
+    → deduplicate()           [Deduplicator]
+    → score()                 [Scorer]
     → filter by min score
-    → persist                [Store]
+    → persist                 [Store]
 """
 from __future__ import annotations
 
@@ -25,16 +29,19 @@ import structlog
 from app.config import settings
 from app.core.prompt_parser import parse_prompt
 from app.core.query_generator import generate_queries
+from app.enrichment.contact_enricher import enrich_leads
 from app.enrichment.deduplicator import deduplicate
 from app.enrichment.normalizer import normalise
+from app.enrichment.relevance import filter_relevant
 from app.enrichment.scorer import score_all
 from app.models.job import JobStatus, LeadJob
 from app.models.lead import Lead, SourceType
 from app.queue.task_queue import run_tasks_concurrent
 from app.scrapers.indiamart import IndiaMARTCrawler
 from app.scrapers.justdial import JustDialCrawler
-from app.scrapers.serp import GoogleSERPScraper
-from app.scrapers.source_classifier import SourceType as ST, classify, should_crawl
+from app.scrapers.linkedin import LinkedInScraper
+from app.scrapers.serp import make_serp_scraper
+from app.scrapers.source_classifier import classify, should_crawl
 from app.scrapers.website import WebsiteCrawler
 from app.storage.database import store
 
@@ -43,10 +50,11 @@ log = structlog.get_logger(__name__)
 
 class LeadGenPipeline:
     def __init__(self) -> None:
-        self._serp = GoogleSERPScraper()
+        self._serp = make_serp_scraper()
         self._indiamart = IndiaMARTCrawler()
         self._justdial = JustDialCrawler()
         self._website = WebsiteCrawler()
+        self._linkedin = LinkedInScraper()
 
     async def run(self, job: LeadJob) -> LeadJob:
         db = store()
@@ -73,7 +81,10 @@ class LeadGenPipeline:
         # ── 1. Parse prompt ────────────────────────────────────────────────
         parsed = await parse_prompt(job.prompt)
         job.parsed_prompt = parsed
-        log.info("prompt_parsed", industry=parsed.industry, location=parsed.location, intent=parsed.intent)
+        log.info("prompt_parsed", industry=parsed.industry, location=parsed.location, intent=parsed.intent, entity_type=parsed.entity_type)
+
+        industry = parsed.industry or " ".join(parsed.keywords[:2])
+        city = parsed.location or ""
 
         # ── 2. Generate queries ────────────────────────────────────────────
         queries = generate_queries(parsed)[:settings.max_serp_queries]
@@ -88,8 +99,7 @@ class LeadGenPipeline:
         serp_results_nested = await run_tasks_concurrent(serp_coros, concurrency=3)
         serp_results = [r for batch in serp_results_nested if batch for r in batch]
 
-        # Collect all URLs, classify them
-        url_map: dict[str, str] = {}   # url → source_type
+        url_map: dict[str, str] = {}
         for r in serp_results:
             if should_crawl(r.url):
                 url_map[r.url] = classify(r.url).value
@@ -99,10 +109,9 @@ class LeadGenPipeline:
 
         all_leads: List[Lead] = []
 
-        # ── 4a. Directory queries (IndiaMART, JustDial) ────────────────────
+        # ── 4a. Directory crawlers (IndiaMART + JustDial) ──────────────────
+        # Use the 3 most targeted queries (exclude site: queries)
         directory_queries = [q for q in queries if "site:" not in q][:3]
-        city = parsed.location or ""
-        industry = parsed.industry or " ".join(parsed.keywords[:2])
 
         dir_coros = []
         for q in directory_queries:
@@ -114,9 +123,9 @@ class LeadGenPipeline:
             if batch:
                 all_leads.extend(batch)
 
-        # ── 4b. Crawl discovered URLs ──────────────────────────────────────
+        # ── 4b. Crawl company websites discovered via SERP ─────────────────
         crawl_coros = []
-        for url, src_type in list(url_map.items())[:20]:  # cap at 20 URLs
+        for url, src_type in list(url_map.items())[:20]:
             if src_type == SourceType.company_website.value:
                 crawl_coros.append(self._website.crawl(url, job_id=job.id))
             elif src_type == SourceType.indiamart.value:
@@ -128,32 +137,55 @@ class LeadGenPipeline:
                 all_leads.append(r)
 
         job.stats.pages_crawled = len(dir_coros) + len(crawl_coros)
+
+        # ── 4c. LinkedIn company pages (rate-limited, capped) ──────────────
+        if settings.linkedin_enabled:
+            li_query = f"{industry} {city}".strip()
+            try:
+                li_leads = await self._linkedin.search(li_query, job_id=job.id)
+                all_leads.extend(li_leads)
+                log.info("linkedin_added", count=len(li_leads))
+            except Exception as exc:
+                log.warning("linkedin_failed", error=str(exc))
+
         job.stats.leads_extracted = len(all_leads)
         log.info("leads_extracted", count=len(all_leads))
 
-        # ── 5. Normalise ───────────────────────────────────────────────────
-        all_leads = [normalise(l) for l in all_leads]
+        # ── 4d. Enrich contact info from individual listing pages ──────────
+        all_leads = await enrich_leads(all_leads, max_enrich=15)
 
-        # Tag with job metadata
+        # ── 5. Set industry from parsed prompt (not from query string) ──────
         for lead in all_leads:
             lead.job_id = job.id
+            if not lead.industry or lead.industry == lead.source_url:
+                lead.industry = industry
+            # Only overwrite if it looks like a full query string was set
+            elif len(lead.industry.split()) > 3:
+                lead.industry = industry
+            # Append location and industry as tags
             if parsed.industry and parsed.industry not in lead.tags:
                 lead.tags.append(parsed.industry)
-            if parsed.location and parsed.location.lower() not in [t.lower() for t in lead.tags]:
-                lead.tags.append(parsed.location)
+            if city and city.lower() not in [t.lower() for t in lead.tags]:
+                lead.tags.append(city)
 
-        # ── 6. Deduplicate ─────────────────────────────────────────────────
+        # ── 6. Normalise ───────────────────────────────────────────────────
+        all_leads = [normalise(l) for l in all_leads]
+
+        # ── 7. Relevance filter — drop clearly off-topic results ───────────
+        all_leads = filter_relevant(all_leads, parsed)
+
+        # ── 8. Deduplicate ─────────────────────────────────────────────────
         all_leads = deduplicate(all_leads)
         job.stats.leads_after_dedup = len(all_leads)
 
-        # ── 7. Score ───────────────────────────────────────────────────────
+        # ── 9. Score ───────────────────────────────────────────────────────
         all_leads = score_all(all_leads)
 
-        # ── 8. Filter by minimum score ─────────────────────────────────────
+        # ── 10. Filter by minimum score ────────────────────────────────────
         all_leads = [l for l in all_leads if l.score >= settings.min_lead_score]
         log.info("leads_above_threshold", count=len(all_leads), threshold=settings.min_lead_score)
 
-        # ── 9. Persist ─────────────────────────────────────────────────────
+        # ── 11. Persist ────────────────────────────────────────────────────
         db = store()
         await db.save_leads(all_leads)
 

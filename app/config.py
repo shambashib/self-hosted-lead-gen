@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     app_debug: bool = True
     secret_key: str = "change-me-in-production"
 
+    # Search
+    brave_search_api_key: Optional[str] = None
+
     # LLM
     openai_api_key: Optional[str] = None
     anthropic_api_key: Optional[str] = None
@@ -76,8 +79,14 @@ class Settings(BaseSettings):
     max_serp_queries: int = 5
 
     # Lead quality
-    min_lead_score: int = 20
+    min_lead_score: int = 0          # 0 = return all; raise to filter low-quality leads
     dedupe_threshold: float = 0.85
+
+    # LinkedIn
+    linkedin_enabled: bool = True
+    linkedin_max_per_job: int = 5
+    linkedin_delay_min: float = 5.0
+    linkedin_delay_max: float = 10.0
 
     @property
     def proxy_list_parsed(self) -> List[str]:

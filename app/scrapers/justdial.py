@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 from typing import List, Optional
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlparse
 
 import structlog
 from bs4 import BeautifulSoup
@@ -22,7 +22,10 @@ from app.scrapers.base import BaseScraper
 log = structlog.get_logger(__name__)
 
 JUSTDIAL_SEARCH = "https://www.justdial.com/{city}/{query}"
-JUSTDIAL_FALLBACK = "https://www.justdial.com/jdmart/{city}/{query}/page-1"
+
+# JustDial renders "Show Number" / "Get Phone Number" as placeholder text until
+# the user clicks; these strings are NOT real phone numbers.
+_PHONE_JUNK = {"show number", "get phone number", "call now", "click to call", ""}
 
 
 class JustDialCrawler(BaseScraper):
@@ -37,7 +40,7 @@ class JustDialCrawler(BaseScraper):
         if not html:
             return []
 
-        leads = self._parse(html, query, job_id)
+        leads = self._parse(html, job_id)
         log.info("justdial_results", query=query, count=len(leads))
         return leads
 
@@ -53,11 +56,10 @@ class JustDialCrawler(BaseScraper):
     def _looks_valid(html: str) -> bool:
         return "jdmart" in html.lower() or "justdial" in html.lower() or "company" in html.lower()
 
-    def _parse(self, html: str, query: str, job_id: str) -> List[Lead]:
+    def _parse(self, html: str, job_id: str) -> List[Lead]:
         soup = BeautifulSoup(html, "lxml")
         leads: List[Lead] = []
 
-        # JustDial listing cards
         cards = (
             soup.select("li.cntanr")
             or soup.select("div[class*='resultbox']")
@@ -66,13 +68,13 @@ class JustDialCrawler(BaseScraper):
         )
 
         for card in cards:
-            lead = self._extract_card(card, query, job_id)
+            lead = self._extract_card(card, job_id)
             if lead:
                 leads.append(lead)
 
         return leads
 
-    def _extract_card(self, card, query: str, job_id: str) -> Optional[Lead]:
+    def _extract_card(self, card, job_id: str) -> Optional[Lead]:
         try:
             # Business name
             name_el = (
@@ -82,48 +84,56 @@ class JustDialCrawler(BaseScraper):
                 or card.select_one("[class*='comp-name']")
             )
             business_name = name_el.get_text(strip=True) if name_el else None
+            if not business_name:
+                return None
 
-            # Phone — JustDial obfuscates; grab data-* attrs or visible text
+            # Phone — JustDial obfuscates; try data-* first, then regex on raw text.
+            # Reject placeholder strings like "Show Number".
             phone = None
             phone_el = card.select_one("[class*='callcontent']") or card.select_one("[data-phone]")
             if phone_el:
-                phone = phone_el.get("data-phone") or phone_el.get_text(strip=True)
+                raw = phone_el.get("data-phone") or phone_el.get_text(strip=True)
+                if raw and raw.lower().strip() not in _PHONE_JUNK:
+                    phone = raw
             if not phone:
-                phones = re.findall(r"[789]\d{9}", card.get_text())
-                phone = phones[0] if phones else None
+                digits = re.findall(r"[789]\d{9}", card.get_text())
+                phone = digits[0] if digits else None
 
-            # Address / city
+            # Address
             addr_el = (
                 card.select_one("span.cont_fl_addr")
                 or card.select_one("[class*='address']")
             )
-            address = addr_el.get_text(strip=True) if addr_el else None
+            raw_addr = addr_el.get_text(strip=True) if addr_el else None
+            address = raw_addr if raw_addr else None  # never store empty string
 
-            # Rating (store as tag)
+            # Rating
             rating_el = card.select_one("span.green-box") or card.select_one("[class*='rating']")
             tags = ["justdial"]
             if rating_el:
-                tags.append(f"rating:{rating_el.get_text(strip=True)}")
+                r = rating_el.get_text(strip=True)
+                if r:
+                    tags.append(f"rating:{r}")
 
-            # Link
+            # Source URL + city extracted from URL path
             a_el = card.select_one("a[href]")
             source_url = None
+            city = None
             if a_el:
                 href = a_el.get("href", "")
                 if href.startswith("http"):
                     source_url = href
                 elif href.startswith("/"):
                     source_url = "https://www.justdial.com" + href
-
-            if not business_name:
-                return None
+                if source_url:
+                    city = self._city_from_url(source_url)
 
             return Lead(
                 job_id=job_id,
                 business_name=business_name,
                 phone=phone,
                 address=address,
-                industry=query,
+                city=city,
                 source_type=SourceType.justdial,
                 source_url=source_url,
                 tags=tags,
@@ -131,3 +141,16 @@ class JustDialCrawler(BaseScraper):
         except Exception as exc:
             log.debug("justdial_card_error", error=str(exc))
             return None
+
+    @staticmethod
+    def _city_from_url(url: str) -> Optional[str]:
+        """Extract city name from JustDial URL path: /Mumbai/Business-Name/..."""
+        try:
+            path = urlparse(url).path.lstrip("/")
+            segment = path.split("/")[0]
+            # JustDial city slugs are capitalized city names
+            if segment and segment[0].isupper() and len(segment) > 2:
+                return segment.replace("-", " ")
+        except Exception:
+            pass
+        return None

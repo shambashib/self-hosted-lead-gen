@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import re
 from typing import Optional
+from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 
@@ -37,9 +38,15 @@ def _clean(url: Optional[str]) -> Optional[str]:
 
 
 class SocialExtractor:
-    def extract(self, html: str) -> SocialLinks:
+    def extract(self, html: str, base_url: str = "") -> SocialLinks:
         soup = BeautifulSoup(html, "lxml")
-        text = str(soup)
+        hrefs = []
+        for a in soup.find_all("a", href=True):
+            href = a.get("href", "").strip()
+            if href and base_url:
+                href = urljoin(base_url, href)
+            hrefs.append(href)
+        text = " ".join([str(soup), *hrefs])
         links: dict[str, Optional[str]] = {}
         for platform, pattern in _PATTERNS.items():
             m = pattern.search(text)

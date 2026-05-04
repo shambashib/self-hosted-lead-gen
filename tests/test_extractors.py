@@ -28,6 +28,11 @@ def test_email_from_html():
     emails = ex.emails(html)
     assert "sales@brand.in" in emails
 
+def test_email_from_mailto_href_only():
+    html = "<a href='mailto:hello@brand.in?subject=Lead'>Email us</a>"
+    emails = ex.emails(html)
+    assert "hello@brand.in" in emails
+
 def test_multiple_emails():
     text = "Reach us: info@co.com or support@co.com"
     emails = ex.emails(text)
@@ -45,6 +50,12 @@ def test_phone_with_country_code():
     phones = ex.phones("+91-9876543210")
     assert any("9876543210" in p for p in phones)
 
+def test_phone_from_html_attrs():
+    html = "<a href='tel:+919876543210'>Call</a><span data-phone='022 12345678'></span>"
+    phones = ex.phones(html)
+    assert any("9876543210" in p for p in phones)
+    assert any("02212345678" in p for p in phones)
+
 
 # ── Social extraction ─────────────────────────────────────────────────────────
 def test_social_linkedin():
@@ -56,6 +67,11 @@ def test_social_instagram():
     html = '<a href="https://www.instagram.com/acmeco/">Insta</a>'
     social = sx.extract(html)
     assert social.instagram and "instagram.com" in social.instagram
+
+def test_social_from_relative_href():
+    html = '<a href="//www.facebook.com/acmeco">Facebook</a>'
+    social = sx.extract(html, "https://acme.com")
+    assert social.facebook and "facebook.com/acmeco" in social.facebook
 
 
 # ── Deduplication ─────────────────────────────────────────────────────────────

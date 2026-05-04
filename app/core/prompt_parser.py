@@ -67,6 +67,21 @@ INDUSTRY_PATTERNS = {
 INTENT_B2C_SIGNALS = {"consumer", "customer", "individual", "person", "people", "buyer", "shopper"}
 INTENT_B2B_SIGNALS = {"business", "company", "enterprise", "b2b", "corporate", "brand", "supplier", "vendor", "founder", "ceo", "startup"}
 
+# Entity type signals - distinguish between individuals vs companies
+ENTITY_INDIVIDUAL_SIGNALS = {
+    "business owner", "business owners", "self-employed", "self employed", "freelancer", 
+    "freelancers", "entrepreneur", "entrepreneurs", "sme", "sme's", "smes", "small business",
+    "small businesses", "proprietor", "proprietors", "sole proprietor", "individual",
+    "person", "professional", "professionals", "owner", "owners", "founder", "founders",
+    "independent", "consultant", "consultants", "practitioner", "practitioners"
+}
+ENTITY_COMPANY_SIGNALS = {
+    "company", "companies", "corporation", "corporations", "enterprise", "enterprises",
+    "brand", "brands", "organization", "organizations", "firm", "firms", "agency",
+    "agencies", "institution", "institutions", "hospital", "hospitals", "clinic",
+    "clinics", "chain", "chains", "group", "groups", "conglomerate", "multinational"
+}
+
 # ─── Rule-based parser ────────────────────────────────────────────────────────
 
 def _find_location(text: str) -> Optional[str]:
@@ -99,6 +114,14 @@ def _find_intent(text: str) -> str:
     return "B2C" if b2c_hits > b2b_hits else "B2B"
 
 
+def _find_entity_type(text: str) -> str:
+    """Detect if the prompt targets individuals or companies."""
+    lower = text.lower()
+    individual_hits = sum(1 for s in ENTITY_INDIVIDUAL_SIGNALS if s in lower)
+    company_hits = sum(1 for s in ENTITY_COMPANY_SIGNALS if s in lower)
+    return "individual" if individual_hits > company_hits else "company"
+
+
 def _extract_keywords(text: str) -> list[str]:
     stopwords = {"find", "get", "search", "list", "show", "me", "i", "want", "need",
                  "in", "at", "for", "of", "the", "a", "an", "and", "or", "with"}
@@ -112,6 +135,7 @@ def _rule_based_parse(prompt: str) -> ParsedPrompt:
         industry=_find_industry(prompt),
         location=_find_location(prompt),
         intent=_find_intent(prompt),
+        entity_type=_find_entity_type(prompt),
         keywords=_extract_keywords(prompt),
     )
 
@@ -122,7 +146,11 @@ async def _llm_parse(prompt: str) -> ParsedPrompt:
     system = (
         "You are a lead generation assistant. Extract structured fields from the user prompt. "
         "Return ONLY valid JSON with keys: industry (string|null), location (string|null), "
-        "intent ('B2B'|'B2C'), keywords (array of strings)."
+        "intent ('B2B'|'B2C'), entity_type ('individual'|'company'), keywords (array of strings). "
+        "entity_type should be 'individual' if the prompt targets business owners, entrepreneurs, "
+        "self-employed professionals, freelancers, SMEs, or specific people. "
+        "entity_type should be 'company' if the prompt targets companies, corporations, brands, "
+        "or organizations."
     )
     try:
         if settings.llm_provider == LLMProvider.openai:
@@ -156,6 +184,7 @@ async def _llm_parse(prompt: str) -> ParsedPrompt:
             industry=data.get("industry"),
             location=data.get("location"),
             intent=data.get("intent", "B2B"),
+            entity_type=data.get("entity_type", "company"),
             keywords=data.get("keywords", []),
         )
     except Exception as exc:

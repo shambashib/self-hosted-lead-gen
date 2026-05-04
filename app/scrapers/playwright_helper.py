@@ -26,10 +26,21 @@ def _sync_fetch(url: str, ua: str) -> Optional[str]:
     try:
         from playwright.sync_api import sync_playwright
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            ctx = browser.new_context(user_agent=ua)
+            browser = p.chromium.launch(
+                headless=True,
+                args=[
+                    "--disable-http2",          # prevents ERR_HTTP2_PROTOCOL_ERROR on some sites
+                    "--no-sandbox",
+                    "--disable-dev-shm-usage",
+                ],
+            )
+            ctx = browser.new_context(
+                user_agent=ua,
+                viewport={"width": 1280, "height": 800},
+            )
             page = ctx.new_page()
-            page.goto(url, timeout=settings.request_timeout * 1000, wait_until="domcontentloaded")
+            # "load" is more patient than "domcontentloaded" for JS-heavy sites
+            page.goto(url, timeout=settings.request_timeout * 1000, wait_until="load")
             html = page.content()
             browser.close()
             return html

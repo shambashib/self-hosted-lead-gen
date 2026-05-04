@@ -21,6 +21,7 @@ class ParsedPrompt(BaseModel):
     industry: Optional[str] = None
     location: Optional[str] = None
     intent: str = "B2B"                      # B2B | B2C
+    entity_type: str = "company"            # individual | company
     keywords: List[str] = Field(default_factory=list)
     entities: Dict[str, str] = Field(default_factory=dict)
 

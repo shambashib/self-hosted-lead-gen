@@ -41,7 +41,15 @@ _INTERNAL_EMAIL_HINTS = {"noreply", "no-reply", "donotreply", "unsubscribe", "su
 class ContactExtractor:
 
     def emails(self, content: str) -> List[str]:
-        text = BeautifulSoup(content, "lxml").get_text(" ") if "<" in content else content
+        text = content
+        if "<" in content:
+            soup = BeautifulSoup(content, "lxml")
+            parts = [soup.get_text(" ")]
+            for a in soup.find_all("a", href=True):
+                href = a.get("href", "")
+                if href.lower().startswith("mailto:"):
+                    parts.append(href.split(":", 1)[1].split("?", 1)[0])
+            text = " ".join(parts)
         raw = _EMAIL_RE.findall(text)
         seen: set = set()
         result: List[str] = []
@@ -59,7 +67,17 @@ class ContactExtractor:
         return result
 
     def phones(self, content: str) -> List[str]:
-        text = BeautifulSoup(content, "lxml").get_text(" ") if "<" in content else content
+        text = content
+        if "<" in content:
+            soup = BeautifulSoup(content, "lxml")
+            parts = [soup.get_text(" ")]
+            for a in soup.find_all("a", href=True):
+                href = a.get("href", "")
+                if href.lower().startswith(("tel:", "whatsapp://")):
+                    parts.append(href)
+            for el in soup.find_all(attrs={"data-phone": True}):
+                parts.append(el.get("data-phone", ""))
+            text = " ".join(parts)
         raw = _PHONE_RE.findall(text)
         seen: set = set()
         result: List[str] = []
