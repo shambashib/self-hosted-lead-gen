@@ -81,7 +81,12 @@ class LeadGenPipeline:
         # ── 1. Parse prompt ────────────────────────────────────────────────
         parsed = await parse_prompt(job.prompt)
         job.parsed_prompt = parsed
-        log.info("prompt_parsed", industry=parsed.industry, location=parsed.location, intent=parsed.intent, entity_type=parsed.entity_type)
+        log.info("prompt_parsed", industry=parsed.industry, location=parsed.location, intent=parsed.intent, entity_type=parsed.entity_type, keywords=parsed.keywords)
+
+        # Force insurance industry if prompt contains insurance-related terms
+        if "insurance" in job.prompt.lower():
+            parsed.industry = "insurance"
+            log.info("industry_overridden_to_insurance", original=parsed.industry)
 
         industry = parsed.industry or " ".join(parsed.keywords[:2])
         city = parsed.location or ""
@@ -157,11 +162,10 @@ class LeadGenPipeline:
         # ── 5. Set industry from parsed prompt (not from query string) ──────
         for lead in all_leads:
             lead.job_id = job.id
-            if not lead.industry or lead.industry == lead.source_url:
-                lead.industry = industry
-            # Only overwrite if it looks like a full query string was set
-            elif len(lead.industry.split()) > 3:
-                lead.industry = industry
+            # Always use the parsed industry from the prompt, not what scrapers set
+            lead.industry = industry
+            # Clear any industry-related tags from scrapers and use the correct one
+            lead.tags = [t for t in lead.tags if t not in ["healthcare", "health", "finance", "insurance"]]
             # Append location and industry as tags
             if parsed.industry and parsed.industry not in lead.tags:
                 lead.tags.append(parsed.industry)

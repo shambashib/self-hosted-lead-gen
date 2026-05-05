@@ -93,6 +93,19 @@ _LARGE_CORPORATIONS = {
     "airtel", "jio", "vi", "bsnl", "star", "disney", "netflix",
     "government", "gov", "ministry", "department", "corporation",
     "hospital", "medical college", "institute", "university",
+    # Insurance companies and platforms
+    "aditya birla health", "aditya birla insurance", "icici prudential",
+    "icici lombard", "hdfc life", "hdfc ergo", "axis bank", "kotak life",
+    "kotak general", "sbi life", "max life", "max bupa", "tata aig",
+    "reliance general", "bajaj allianz", "birla sun life", "aviva",
+    "aegon religare", "dhfl pramerica", "edelweiss tokio", "future generali",
+    "iffco tokio", "india first", "kotak mahindra", "lic", "life insurance",
+    "general insurance", "star health", "royal sundaram", "cholamandalam",
+    "oriental insurance", "new india assurance", "national insurance",
+    "united india", "apollo munich", "cigna ttk", "health insurance",
+    # Insurance comparison platforms
+    "coverfox", "acko", "beshak", "ditto", "insurance articles",
+    "policyx", "insurancedekho", "turtlemint", "zerodha", "groww",
 }
 
 
@@ -122,6 +135,45 @@ def _is_large_corporation(lead: Lead) -> bool:
     return False
 
 
+def _is_insurance_provider(lead: Lead) -> bool:
+    """Check if the lead is an insurance company or platform (not someone who needs insurance)."""
+    name_lower = (lead.business_name or "").lower()
+    url_lower = (lead.source_url or "").lower()
+    
+    # Insurance company indicators - expanded list
+    insurance_provider_keywords = {
+        "insurance", "insurer", "policy", "coverfox", "acko", "policybazaar",
+        "bankbazaar", "beshak", "ditto", "insurancedekho", "policyx",
+        "turtlemint", "prudential", "lombard", "ergo", "aig", "allianz",
+        "aviva", "religare", "pramerica", "tokio", "generali", "assurance",
+        "aditya birla", "icici", "hdfc", "axis", "kotak", "lic",
+        "star health", "royal sundaram", "cholamandalam", "oriental",
+        "new india", "national insurance", "united india", "apollo munich",
+        "max life", "max bupa", "tata aig", "reliance general", "bajaj",
+        "future generali", "iffco tokio", "edelweiss", "dhfl", "aegon",
+    }
+    
+    # Check if business name contains insurance provider keywords
+    for keyword in insurance_provider_keywords:
+        if keyword in name_lower:
+            return True
+    
+    # Check if business name ends with "Insurance" (common pattern)
+    if name_lower.endswith(" insurance"):
+        return True
+    
+    # Check if URL path contains insurance-related content (articles, comparison)
+    if "insurance" in url_lower and any(x in url_lower for x in ["article", "compare", "quote", "policy"]):
+        return True
+    
+    # Check if business name is clearly an insurance platform/content site
+    if any(x in name_lower for x in ["article", "articles", "blog", "community", "org"]):
+        if "insurance" in name_lower or "insurance" in url_lower:
+            return True
+    
+    return False
+
+
 def _is_relevant(lead: Lead, parsed: ParsedPrompt) -> bool:
     industry = parsed.industry or ""
     if not industry:
@@ -129,6 +181,15 @@ def _is_relevant(lead: Lead, parsed: ParsedPrompt) -> bool:
 
     # ── Entity filter: exclude large corporations when targeting individuals ────
     if parsed.entity_type == "individual" and _is_large_corporation(lead):
+        return False
+
+    # ── Insurance provider filter: exclude insurance companies when looking for individuals who need insurance ────
+    # This is critical: if we're looking for people who NEED insurance, exclude companies that SELL insurance
+    is_insurance_search = (
+        industry == "insurance" or
+        "insurance" in parsed.raw.lower()
+    )
+    if is_insurance_search and _is_insurance_provider(lead):
         return False
 
     name_tokens = _tokens(lead.business_name or "")
@@ -156,7 +217,16 @@ def filter_relevant(leads: List[Lead], parsed: ParsedPrompt) -> List[Lead]:
     dropped = before - len(filtered)
     if dropped:
         import structlog
-        structlog.get_logger(__name__).info(
-            "relevance_filter", dropped=dropped, kept=len(filtered)
+        logger = structlog.get_logger(__name__)
+        logger.info(
+            "relevance_filter", dropped=dropped, kept=len(filtered),
+            entity_type=parsed.entity_type, industry=parsed.industry
         )
+        # Log some examples of filtered leads for debugging
+        dropped_leads = [l for l in leads if not _is_relevant(l, parsed)]
+        if dropped_leads:
+            logger.info(
+                "filtered_leads_sample",
+                samples=[l.business_name for l in dropped_leads[:3]]
+            )
     return filtered

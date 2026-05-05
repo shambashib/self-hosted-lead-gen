@@ -16,6 +16,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.core.pipeline import LeadGenPipeline
+from app.core.search_pipeline import SearchBasedLeadPipeline
 from app.models.job import LeadJob, JobStatus
 from app.models.lead import Lead
 from app.storage.database import store
@@ -26,6 +27,15 @@ router = APIRouter(prefix="/api/leads", tags=["leads"])
 class GenerateRequest(BaseModel):
     prompt: str
     min_score: Optional[int] = None
+    # Firecrawl-style search parameters
+    query: Optional[str] = None  # Direct search query (overrides prompt parsing)
+    limit: Optional[int] = 10
+    sources: Optional[List[str]] = ["web"]
+    exclude_domains: Optional[List[str]] = None
+    include_domains: Optional[List[str]] = None
+    lang: Optional[str] = "en"
+    country: Optional[str] = "in"
+    location: Optional[str] = None
 
 
 class GenerateResponse(BaseModel):
@@ -66,16 +76,37 @@ async def generate_leads(req: GenerateRequest, background_tasks: BackgroundTasks
 # ── POST /generate/sync ────────────────────────────────────────────────────
 @router.post("/generate/sync", response_model=LeadsResponse)
 async def generate_leads_sync(req: GenerateRequest):
-    """Synchronous lead generation — waits for completion (use for demos/testing)."""
+    """Synchronous lead generation — waits for completion (use for demos/testing).
+    
+    Supports two modes:
+    1. Traditional: Uses directory scraping (JustDial, IndiaMART) based on prompt parsing
+    2. Search-based: Uses DuckDuckGo/SearXNG search when query parameter is provided
+    """
     if not req.prompt or len(req.prompt.strip()) < 5:
         raise HTTPException(400, "Prompt is too short.")
 
-    job = LeadJob(prompt=req.prompt.strip())
-    pipeline = LeadGenPipeline()
-    job = await pipeline.run(job)
+    # Use search-based pipeline if query is provided (Firecrawl-style)
+    if req.query or (req.sources and "web" in req.sources):
+        search_pipeline = SearchBasedLeadPipeline()
+        job, leads = await search_pipeline.run(
+            prompt=req.prompt.strip(),
+            query=req.query,
+            limit=req.limit or 10,
+            sources=req.sources,
+            exclude_domains=req.exclude_domains,
+            include_domains=req.include_domains,
+            lang=req.lang,
+            country=req.country,
+            location=req.location,
+        )
+    else:
+        # Use traditional directory scraping pipeline
+        job = LeadJob(prompt=req.prompt.strip())
+        pipeline = LeadGenPipeline()
+        job = await pipeline.run(job)
 
-    db = store()
-    leads = await db.get_leads_by_job(job.id)
+        db = store()
+        leads = await db.get_leads_by_job(job.id)
 
     if req.min_score is not None:
         leads = [l for l in leads if l.score >= req.min_score]

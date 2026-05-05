@@ -17,8 +17,45 @@ def generate_queries(parsed: ParsedPrompt) -> List[str]:
 
     queries: List[str] = []
 
+    # ── SPECIAL CASE: Insurance searches for individuals ─────────────────────
+    # When looking for individuals who NEED insurance, search for businesses in other industries
+    # that would need insurance, NOT insurance companies themselves
+    is_insurance_search = (
+        industry == "insurance" or
+        "insurance" in parsed.raw.lower()
+    )
+
+    if is_insurance_search and parsed.entity_type == "individual":
+        # Search for businesses in other industries that would need insurance
+        target_industries = [
+            "restaurant", "retail shop", "manufacturing", "construction",
+            "consulting", "freelancer", "doctor", "clinic", "trader",
+            "small business", "startup", "professional", "contractor"
+        ]
+        for target in target_industries:
+            if location:
+                queries.append(f"{target} {location}")
+                queries.append(f"{target} business owners {location}")
+            else:
+                queries.append(f"{target} India")
+                queries.append(f"{target} business owners India")
     # ── Entity-aware query generation ─────────────────────────────────────────
-    if parsed.entity_type == "individual":
+    elif parsed.entity_type == "individual":
+        raw_lower = parsed.raw.lower()
+        is_executive_search = any(
+            token in raw_lower
+            for token in ["vp", "vice president", "director", "head of", "cxo", "ceo", "cto", "cro", "cmo"]
+        )
+        if is_executive_search:
+            role_terms = " ".join(
+                kw for kw in parsed.keywords
+                if kw not in {"find", "people", "person", "individual"}
+            ) or industry
+            queries += [
+                f'site:linkedin.com/in "{role_terms}"{loc_suffix} -jobs -hiring -careers',
+                f'"{role_terms}" "{location}" "LinkedIn" -jobs -hiring' if location else f'"{role_terms}" "LinkedIn" -jobs -hiring',
+                f'"VP Sales" "B2B SaaS"{loc_suffix} "LinkedIn" -jobs -hiring',
+            ]
         # Target individual business owners, entrepreneurs, self-employed
         if industry and location:
             queries += [
@@ -59,7 +96,7 @@ def generate_queries(parsed: ParsedPrompt) -> List[str]:
             queries += [f"{kws} contact India", f"{kws} phone email India"]
 
     # ── Directory-specific queries ────────────────────────────────────────────
-    if industry:
+    if industry and not is_insurance_search:
         if parsed.entity_type == "individual":
             # For individuals, use more specific directory queries
             queries += [
@@ -75,13 +112,14 @@ def generate_queries(parsed: ParsedPrompt) -> List[str]:
             ]
 
     # ── Intent-aware variants ─────────────────────────────────────────────────
-    if parsed.intent == "B2B":
-        if parsed.entity_type == "individual":
-            queries += [f"{industry} individual suppliers{loc_suffix}"]
+    if not is_insurance_search:
+        if parsed.intent == "B2B":
+            if parsed.entity_type == "individual":
+                queries += [f"{industry} individual suppliers{loc_suffix}"]
+            else:
+                queries += [f"{industry} suppliers exporters{loc_suffix}"]
         else:
-            queries += [f"{industry} suppliers exporters{loc_suffix}"]
-    else:
-        queries += [f"{industry} shops{loc_suffix} buy online"]
+            queries += [f"{industry} shops{loc_suffix} buy online"]
 
     # Deduplicate while preserving order
     seen: set = set()
