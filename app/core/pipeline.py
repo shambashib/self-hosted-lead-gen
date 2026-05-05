@@ -5,7 +5,7 @@ Flow:
   Prompt
     → parse_prompt()          [PromptParser]
     → generate_queries()      [QueryGenerator]
-    → SERP scrape             [BraveSearchScraper (API) | GoogleSERPScraper (HTML fallback)]
+    → SERP scrape             [SearXNGScraper (self-hosted) | BraveSearchScraper (API) | GoogleSERPScraper (HTML fallback)]
     → classify URLs           [SourceClassifier]
     → parallel crawl          [IndiaMARTCrawler | JustDialCrawler | WebsiteCrawler]
     → LinkedIn company pages  [LinkedInScraper] (rate-limited, capped)
@@ -40,7 +40,9 @@ from app.queue.task_queue import run_tasks_concurrent
 from app.scrapers.indiamart import IndiaMARTCrawler
 from app.scrapers.justdial import JustDialCrawler
 from app.scrapers.linkedin import LinkedInScraper
-from app.scrapers.serp import make_serp_scraper
+from app.core.search_executor import build_search_query
+from app.scrapers.searxng import SearXNGScraper
+from app.scrapers.serp import SERPResult, make_serp_scraper
 from app.scrapers.source_classifier import classify, should_crawl
 from app.scrapers.website import WebsiteCrawler
 from app.storage.database import store
@@ -55,6 +57,32 @@ class LeadGenPipeline:
         self._justdial = JustDialCrawler()
         self._website = WebsiteCrawler()
         self._linkedin = LinkedInScraper()
+
+    async def _search_query(
+        self,
+        query: str,
+        *,
+        num: int,
+        lang: str = "en",
+        categories: list | None = None,
+        include_domains: list | None = None,
+        exclude_domains: list | None = None,
+    ) -> list:
+        """
+        Build query with Firecrawl-style modifiers then call whichever SERP
+        backend is active. Normalises both SearXNG and Brave/Google responses
+        into a flat List[SERPResult] so the rest of the pipeline is unchanged.
+        """
+        built_query, _ = build_search_query(query, categories, include_domains, exclude_domains)
+
+        if isinstance(self._serp, SearXNGScraper):
+            resp = await self._serp.search(built_query, num_results=num, lang=lang)
+            return [
+                SERPResult(url=item.url, title=item.title, snippet=item.description)
+                for item in (resp.web or [])
+            ]
+        # Brave / Google — already return List[SERPResult]
+        return await self._serp.search(built_query, num=num)
 
     async def run(self, job: LeadJob) -> LeadJob:
         db = store()
@@ -92,8 +120,17 @@ class LeadGenPipeline:
         log.info("queries_generated", count=len(queries), queries=queries[:3])
 
         # ── 3. SERP scrape ─────────────────────────────────────────────────
+        # Each query goes through build_search_query() (Firecrawl workflow):
+        # appends site:/filetype: modifiers for categories and domain filters.
         serp_coros = [
-            self._serp.search(q, num=settings.serp_results_per_query)
+            self._search_query(
+                q,
+                num=settings.serp_results_per_query,
+                lang=job.lang,
+                categories=job.categories,
+                include_domains=job.include_domains,
+                exclude_domains=job.exclude_domains,
+            )
             for q in queries
         ]
         serp_results_nested = await run_tasks_concurrent(serp_coros, concurrency=3)

@@ -27,6 +27,14 @@ class GenerateRequest(BaseModel):
     prompt: str
     min_score: Optional[int] = None
 
+    # Optional search refinements (Firecrawl workflow)
+    lang: str = "en"
+    country: Optional[str] = None
+    sources: List[str] = ["web"]                # "web" | "images" | "news"
+    categories: Optional[List[str]] = None      # "github" | "research" | "pdf"
+    include_domains: Optional[List[str]] = None
+    exclude_domains: Optional[List[str]] = None
+
 
 class GenerateResponse(BaseModel):
     job_id: str
@@ -49,7 +57,15 @@ async def generate_leads(req: GenerateRequest, background_tasks: BackgroundTasks
     if not req.prompt or len(req.prompt.strip()) < 5:
         raise HTTPException(400, "Prompt is too short.")
 
-    job = LeadJob(prompt=req.prompt.strip())
+    job = LeadJob(
+        prompt=req.prompt.strip(),
+        lang=req.lang,
+        search_country=req.country,
+        sources=req.sources,
+        categories=req.categories,
+        include_domains=req.include_domains,
+        exclude_domains=req.exclude_domains,
+    )
     db = store()
     await db.save_job(job)
 
@@ -70,7 +86,15 @@ async def generate_leads_sync(req: GenerateRequest):
     if not req.prompt or len(req.prompt.strip()) < 5:
         raise HTTPException(400, "Prompt is too short.")
 
-    job = LeadJob(prompt=req.prompt.strip())
+    job = LeadJob(
+        prompt=req.prompt.strip(),
+        lang=req.lang,
+        search_country=req.country,
+        sources=req.sources,
+        categories=req.categories,
+        include_domains=req.include_domains,
+        exclude_domains=req.exclude_domains,
+    )
     pipeline = LeadGenPipeline()
     job = await pipeline.run(job)
 

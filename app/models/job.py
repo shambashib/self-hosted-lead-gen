@@ -48,6 +48,14 @@ class LeadJob(BaseModel):
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
 
+    # Search refinements (Firecrawl workflow — all optional, safe to ignore)
+    lang: str = "en"
+    search_country: Optional[str] = None
+    sources: List[str] = Field(default_factory=lambda: ["web"])
+    categories: Optional[List[str]] = None       # "github" | "research" | "pdf"
+    include_domains: Optional[List[str]] = None
+    exclude_domains: Optional[List[str]] = None
+
     @property
     def duration_seconds(self) -> Optional[float]:
         if self.started_at and self.completed_at:

@@ -74,6 +74,11 @@ class Settings(BaseSettings):
     max_concurrent_crawls: int = 10
     use_playwright: bool = True
 
+    # SearXNG (self-hosted search engine — preferred when endpoint is set)
+    searxng_endpoint: Optional[str] = None
+    searxng_engines: str = ""       # e.g. "google,bing,duckduckgo"
+    searxng_categories: str = ""    # e.g. "general,news"
+
     # SERP
     serp_results_per_query: int = 10
     max_serp_queries: int = 5

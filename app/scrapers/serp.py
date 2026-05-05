@@ -192,8 +192,17 @@ class GoogleSERPScraper(BaseScraper):
 
 # ── Factory — pick the right scraper based on config ─────────────────────────
 
-def make_serp_scraper() -> BraveSearchScraper | GoogleSERPScraper:
-    """Return BraveSearchScraper if an API key is configured, else Google HTML."""
+def make_serp_scraper():
+    """
+    Priority:
+      1. SearXNG  — self-hosted, no rate limits, preferred when SEARXNG_ENDPOINT is set
+      2. Brave    — clean JSON API, requires BRAVE_SEARCH_API_KEY
+      3. Google   — HTML scraping fallback (fragile, use as last resort)
+    """
+    if settings.searxng_endpoint:
+        from app.scrapers.searxng import SearXNGScraper  # local import avoids circular
+        log.info("serp_backend", backend="searxng", endpoint=settings.searxng_endpoint)
+        return SearXNGScraper()
     if settings.brave_search_api_key:
         log.info("serp_backend", backend="brave")
         return BraveSearchScraper()

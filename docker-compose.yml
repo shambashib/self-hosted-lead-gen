@@ -37,3 +37,12 @@ services:
 
 volumes:
   mongo_data:
+
+searxng:
+  image: searxng/searxng:latest
+  ports:
+    - "8080:8080"
+  volumes:
+    - ./searxng:/etc/searxng
+  environment:
+    - SEARXNG_BASE_URL=http://localhost:8080
