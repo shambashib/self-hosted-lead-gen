@@ -21,6 +21,9 @@ _SKIP_DOMAINS = {
     "twitter.com", "instagram.com", "linkedin.com", "wikipedia.org",
     "amazon.in", "flipkart.com", "myntra.com", "nykaa.com",
     "quora.com", "reddit.com", "medium.com",
+    "indeed.com", "simplyhired.com", "ziprecruiter.com", "jooble.org",
+    "smartrecruiters.com", "greenhouse.io", "lever.co", "workable.com",
+    "glassdoor.com", "monster.com", "careerbuilder.com", "wellfound.com",
 }
 
 

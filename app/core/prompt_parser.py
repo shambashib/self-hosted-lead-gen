@@ -51,8 +51,9 @@ INDUSTRY_PATTERNS = {
     "real_estate": ["real estate", "property", "realty", "realtor", "housing", "builder", "developer", "flat", "apartment"],
     "saas": ["saas", "software", "tech startup", "b2b software", "cloud", "platform"],
     "ecommerce": ["d2c", "direct to consumer", "ecommerce", "e-commerce", "online store", "brand"],
-    "healthcare": ["healthcare", "health", "pharma", "pharmaceutical", "hospital", "clinic", "doctor"],
-    "finance": ["finance", "fintech", "lending", "insurance", "investment", "banking"],
+    "insurance": ["insurance", "life insurance", "health insurance", "term insurance", "business insurance", "medical insurance"],  # Check before healthcare
+    "healthcare": ["healthcare", "pharma", "pharmaceutical", "hospital", "clinic", "doctor"],  # Removed "health" to avoid matching "health insurance"
+    "finance": ["finance", "fintech", "lending", "investment", "banking"],
     "education": ["education", "edtech", "coaching", "training", "school", "college"],
     "food": ["food", "restaurant", "cafe", "fmcg", "beverage", "catering"],
     "manufacturing": ["manufacturing", "factory", "supplier", "exporter", "importer", "wholesale"],
@@ -73,7 +74,9 @@ ENTITY_INDIVIDUAL_SIGNALS = {
     "freelancers", "entrepreneur", "entrepreneurs", "sme", "sme's", "smes", "small business",
     "small businesses", "proprietor", "proprietors", "sole proprietor", "individual",
     "person", "professional", "professionals", "owner", "owners", "founder", "founders",
-    "independent", "consultant", "consultants", "practitioner", "practitioners"
+    "independent", "consultant", "consultants", "practitioner", "practitioners",
+    "vp", "vice president", "director", "head of", "manager", "executive",
+    "cxo", "ceo", "cto", "cro", "cmo", "sales leader", "sales leaders",
 }
 ENTITY_COMPANY_SIGNALS = {
     "company", "companies", "corporation", "corporations", "enterprise", "enterprises",
@@ -101,10 +104,20 @@ def _find_location(text: str) -> Optional[str]:
 
 def _find_industry(text: str) -> Optional[str]:
     lower = text.lower()
+    # Score each industry by number of keyword matches, return highest scored
+    # Give extra weight to longer, more specific matches
+    best_industry = None
+    best_score = 0
     for industry, keywords in INDUSTRY_PATTERNS.items():
-        if any(kw in lower for kw in keywords):
-            return industry
-    return None
+        score = 0
+        for kw in keywords:
+            if kw in lower:
+                # Longer keywords get higher weight (more specific)
+                score += len(kw.split())
+        if score > best_score:
+            best_score = score
+            best_industry = industry
+    return best_industry
 
 
 def _find_intent(text: str) -> str:
